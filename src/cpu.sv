@@ -2,15 +2,13 @@ module cpu (
 	input logic clk,
 	input logic rst_n
 );
-	// PROGRAM COUNTER
-	reg [31:0] pc;
-	logic [31:0] pc_next;
+
+	// -------------------- PROGRAM COUNTER --------------------
+	logic [31:0] pc, pc_next;
+	logic pc_source; // from control unit
 
 	always_comb begin : pc_select
-		case (pc_source)
-			1'b1: pc_next = pc + immediate;
-			default: pc_next = pc + 4;
-		endcase
+		pc_next = (pc_source) ? (pc + immediate) : (pc + 32'd4);
 	end
 
 	always @(posedge clk) begin
@@ -21,9 +19,7 @@ module cpu (
 		end
 	end
 
-	// INSTRUCTION MEMORY
-
-	// Acts as a ROM
+	// -------------------- INSTRUCTION MEMORY (ROM) ------------
 	wire [31:0] instruction;
 
 	memory #(
@@ -40,78 +36,60 @@ module cpu (
 		.read_data(instruction)
 	);
 
-	// CONTROL
-	
-	// Intercepts intructions data, generate control signals accordingly
-	// in control unit
+
+	// -------------------- INSTRUCTION FIELDS --------------------
 	logic [6:0] op;
+	logic [2:0] func3;
+	logic [6:0] func7;
+	logic [4:0] rs1, rs2, rd;
+
 	assign op = instruction[6:0];
-	logic [2:0] f3;
-	assign f3 = instruction[14:12];
-	wire alu_zero;
-	// out control unit
+	assign func3 = instruction[14:12];
+	assign func7 = instruction[31:25];
+	assign rs1 = instruction[19:15];
+	assign rs2 = instruction[24:20];
+	assign rd = instruction[11:7];
+
 	wire [2:0] alu_control;
 	wire [1:0] imm_source;
-	wire mem_write;
-	wire reg_write;
-	// out muxes wires
-	wire alu_source;
-	wire write_back_source;
-
-	wire pc_source;
+	wire mem_write, reg_write;
+	wire alu_source, write_back_source;
+	wire alu_zero;
 
 	control control_unit(
 		.op(op),
-		.func3(f3),
-		.func7(7'b0), // TODO(higanbana): Future instructions would need f7
+		.func3(func3),
+		.func7(func7),
 		.alu_zero(alu_zero),
-
 		.alu_control(alu_control),
 		.imm_source(imm_source),
 		.mem_write(mem_write),
 		.reg_write(reg_write),
-		// muxes out
 		.alu_source(alu_source),
 		.write_back_source(write_back_source),
-
 		.pc_source(pc_source)
 	);
 
-	// REGFILE
-	
-	logic [4:0] source_reg1;
-	assign source_reg1 = instruction[19:15];
-	logic [4:0] source_reg2;
-	assign source_reg2 = instruction[24:20];
-	logic [4:0] dest_reg;
-	assign dest_reg = instruction[11:7];
-	wire [31:0] read_reg1;
-	wire [31:0] read_reg2;
 
-	logic [31:0] write_back_data;
-	always_comb begin : write_back_source_select
-		case (write_back_source)
-			1'b1: write_back_data = mem_read;
-			default: write_back_data = alu_result;
-		endcase
-	end
+	// -------------------- REGISTER FILE --------------------
+	wire [31:0] read_reg1, read_reg2;
 
 	regfile regfile(
 		.clk(clk),
 		.rst_n(rst_n),
 
-		.address1(source_reg1),
-		.address2(source_reg2),
+		.address1(rs1),
+		.address2(rs2),
 
 		.read_data1(read_reg1),
 		.read_data2(read_reg2),
 
 		.write_enable(reg_write),
 		.write_data(write_back_data),
-		.address3(dest_reg)
+		.address3(rd)
 	);
 
-	// SIGN EXTEND
+	// -------------------- SIGN EXTENDER -------------------
 	
 	logic [24:0] raw_imm;
 	assign raw_imm = instruction[31:7];
@@ -123,16 +101,13 @@ module cpu (
 		.immediate(immediate)
 	);
 
-	// ALU
+	// -------------------- ALU -------------------
 	
 	wire [31:0] alu_result;
 	logic [31:0] alu_src2;
 
 	always_comb begin : alu_source_select
-		case (alu_source)
-			1'b1: alu_src2 = immediate;
-			default: alu_src2 = read_reg2;
-		endcase
+		alu_src2 = (alu_source) ? immediate : read_reg2;
 	end
 
 	alu alu_inst(
@@ -144,21 +119,25 @@ module cpu (
 		.zero(alu_zero)
 	);
 
-	// DATA MEMORY
+	// -------------------- DATA MEMORY -------------------
 	wire [31:0] mem_read;
 
 	memory #(
 		.mem_init("./test_dmemory.hex")
 	) data_memory (
-		// Memory inputs
 		.clk(clk),
 		.address(alu_result),
 		.write_data(read_reg2),
 		.write_enable(mem_write),
 		.rst_n(1'b1),
-
-		// Memory outputs
 		.read_data(mem_read)
 	);
+
+	// -------------------- WRITE‑BACK MUX --------------------
+	logic [31:0] write_back_data;
+
+	always_comb begin
+		write_back_data = (write_back_source) ? mem_read : alu_result;
+	end
 
 endmodule

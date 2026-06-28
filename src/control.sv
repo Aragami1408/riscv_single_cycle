@@ -8,16 +8,16 @@ module control(
 	input logic alu_zero,
 
 	output logic [2:0] alu_control, // Wires to ALU module
-	output logic [1:0] imm_source,  // Wires to sign extender module
-	output logic mem_write,         // Write to data memory?
-	output logic reg_write,         // Write to regfile?
-	output logic alu_source,        // if 0 -> ALU's src2 is from reg2, otherwise from sign-extended imm
-	output logic write_back_source, // if 0 -> regfile is written from ALU, otherwise from data memory
-	output logic pc_source          // if 0 -> PC=PC+4, otherwise PC = PC+IMM
+	output logic [1:0] imm_source,  // Wires to Sign Extender module
+	output logic mem_write,         // Data memory write enable
+	output logic reg_write,         // Register file write enable
+	output logic alu_source,        // 0 -> register, 1 -> immediate
+	output logic write_back_source, // 0 -> ALU result, 1 = memory read data
+	output logic pc_source          // 0 = PC+4, 1 = branch/jump target
 );
 
-	// MAIN DECODER
-	logic [1:0] alu_op; // Determines alu_control
+	// -------------------- MAIN DECODER --------------------
+	logic [1:0] alu_op; // Determines alu_control (See alu.sv)
 	logic branch;
 	logic jump;
 
@@ -35,42 +35,30 @@ module control(
 			7'b0000011: begin
 				reg_write = 1'b1;
 				imm_source = 2'b00;
-				mem_write = 1'b0;
 				alu_op = 2'b00;
-				alu_source = 1'b1; // imm
-				write_back_source = 1'b1; // memory_read
-				branch = 1'b0;
-				jump = 1'b0;
+				alu_source = 1'b1;
+				write_back_source = 1'b1;
 			end
 			// S-type (sw)
 			7'b0100011: begin
-				reg_write = 1'b0;
 				imm_source = 2'b01;
 				mem_write = 1'b1;
 				alu_op = 2'b00;
-				alu_source = 1'b1; // imm
-				branch = 1'b0;
-				jump = 1'b0;
+				alu_source = 1'b1;
 			end
 			// R-type
 			7'b0110011: begin
 				reg_write = 1'b1;
-				mem_write = 1'b0;
 				alu_op = 2'b10;
-				alu_source = 1'b0; // reg2
-				write_back_source = 1'b0; // alu_result
-				branch = 1'b0;
-				jump = 1'b0;
+				alu_source = 1'b0;
+				write_back_source = 1'b0;
 			end
 			// B-type
 			7'b1100011: begin
-				reg_write = 1'b0;
 				imm_source = 2'b10;
-				alu_source = 1'b0;
-				mem_write = 1'b0;
 				alu_op = 2'b01;
+				alu_source = 1'b0;
 				branch = 1'b1;
-				jump = 1'b0;
 			end
 			// EVERYTHING ELSE
 			default: begin
@@ -88,35 +76,31 @@ module control(
 		endcase
 	end
 
-	// ALU DECODER
+	// -------------------- ALU DECODER --------------------
 	always_comb begin
 		case (alu_op)
-			// LW, SW
-			2'b00: alu_control = 3'b000;
-			// R-types
-			2'b10: begin
+			2'b00: alu_control = 3'b000;                                // ADD (for lw/sw)
+			2'b10: begin                                                // R-type
 				case (func3)
-					// ADD
-					// TODO(higanbana): add SUB with a different F7
-					3'b000: alu_control = 3'b000;
-					// AND
-					3'b111: alu_control = 3'b010;
-					// OR
-					3'b110: alu_control = 3'b011;
-					// ALL THE OTHERS
-					default: alu_control = 3'b111;
+					3'b000:
+						alu_control = (func7[5]) ? 3'b001 : 3'b000;     // ADD/SUB depending on func7[5]
+					3'b111: alu_control = 3'b010;                       // AND
+					3'b110: alu_control = 3'b011;                       // OR
+					default: alu_control = 3'b111;                      // Unsupported (will output 0)
 				endcase
 			end
 			// BEQ
-			2'b01: alu_control = 3'b001;
+			2'b01: alu_control = 3'b001;                                // SUB (for brnach comparison)
 			// EVERYTHING ELSE
 			default: alu_control = 3'b111;
 		endcase
 	end
 
+	// -------------------- BRANCH LOGIC --------------------
 	logic assert_branch;
 
 	always_comb begin : branch_logic_decode
+		// Only BEQ (func3 == 000) is supported for now
 		case (func3)
 			3'b000: assert_branch = alu_zero & branch;
 			default: assert_branch = 1'b0;

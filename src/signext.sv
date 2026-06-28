@@ -1,19 +1,19 @@
 module signext (
 	input logic [24:0] raw_src,
-	input logic [1:0] imm_source, // Determine how to extend raw immediate value for different instruction types
+	input logic [1:0] imm_source, // Immediate format selector
 
 	output logic [31:0] immediate
 );
 
-	logic [11:0] gathered_imm;
+	logic [11:0] gathered_imm; // lower 12 bits of immediate
 
 	always_comb begin
 		case (imm_source)
-			// For I-types
+			// I-type
 			2'b00: gathered_imm = raw_src[24:13];
-			// For S-types
+			// S-type
 			2'b01: gathered_imm = {raw_src[24:18], raw_src[4:0]};
-			// For B-types
+			// B-type
 			2'b10: gathered_imm = {raw_src[0],raw_src[23:18],raw_src[4:1],1'b0};
 			default: gathered_imm = 12'b0;
 		endcase
