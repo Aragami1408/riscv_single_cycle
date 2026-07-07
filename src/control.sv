@@ -117,6 +117,8 @@ module control(
 					3'b000: alu_control = 3'b000;
 					3'b111: alu_control = 3'b010;                       // AND
 					3'b110: alu_control = 3'b011;                       // OR
+					3'b010: alu_control = 3'b101;                       // SLTI
+					3'b011: alu_control = 3'b111;                       // SLTIU
 					default: alu_control = 3'b111;                      // Unsupported (will output 0)
 				endcase
 			end

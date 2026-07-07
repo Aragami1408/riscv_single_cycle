@@ -89,3 +89,42 @@ async def sub_test(dut):
         assert str(dut.alu_result.value) == bin(expected)[2:].zfill(32)
         assert binary_to_hex(dut.alu_result.value) == hex(expected)[2:].zfill(8).upper()
         assert int(str(dut.alu_result.value),2) == expected
+
+@cocotb.test()
+async def slt_test(dut):
+    await Timer(1, unit="ns")
+    dut.alu_control.value = 0b101
+    for _ in range(1000):
+        src1 = random.randint(0, 0xFFFFFFFF)
+        src2 = random.randint(0, 0xFFFFFFFF)
+        dut.src1.value = src1
+        dut.src2.value = src2
+
+        await Timer(1, unit="ns")
+
+        if src1 >> 31 == 0 and src2 >> 31 == 0:
+            expected = int(src1 < src2)
+        elif src1 >> 31 == 0 and src2 >> 31 == 1:
+            expected = int(src1 < (src2 - (1<<32)))
+        elif src1 >> 31 == 1 and src2 >> 31 == 0:
+            expected = int((src1 - (1<<32)) < src2)
+        elif src1 >> 31 == 1 and src2 >> 31 == 1:
+            expected = int((src1 - (1<<32)) < (src2 - (1<<32)))
+
+        assert int(dut.alu_result.value) == expected
+        assert dut.alu_result.value == 31*"0" + str(int(dut.alu_result.value))
+
+@cocotb.test()
+async def sltiu_test(dut):
+    await Timer(1, unit="ns")
+    dut.alu_control.value = 0b111
+    for _ in range(1000):
+        src1 = random.randint(0, 0xFFFFFFFF)
+        src2 = random.randint(0, 0xFFFFFFFF)
+        dut.src1.value = src1
+        dut.src2.value = src2
+
+        await Timer(1, unit="ns")
+        expected = int(src1 < src2)
+
+        assert dut.alu_result.value == 31*"0" + str(int(dut.alu_result.value))
